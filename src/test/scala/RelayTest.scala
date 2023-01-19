@@ -13,20 +13,10 @@ object RelayTest extends TestSuite {
   scalajs.js.Dynamic.global.globalThis.require("websocket-polyfill")
 
   val tests = Tests {
-    test("println test") {
-      IO.println("IO.println works1").unsafeRunAsync{
-        case Left(e) => require(false, e.getMessage())
-        case Right(value) => assert(true)
-      }
-      IO.println("IO.println works2").unsafeRunAsync{
-        case Left(e) => require(false, e.getMessage())
-        case Right(value) => assert(true)
-      }
-    }
     test("connect to relay and subscribe") {
       val program = Relay(uri"wss://nostr.fmt.wiz.biz").use { 
         relay => for {
-          _ <- relay.start
+          _ <- IO.println("relay test starting...")
           _ <- IO.println("websocket supposedly started")
           subscription <- relay.subscribe(
             Filter(kinds = List(1), limit = Some(5))
