@@ -29,7 +29,7 @@ object Relay {
       WebSocketClient[IO].connectHighLevel(WSRequest(uri))
     ).mapN((nextId, commands, events, eoses, conn) =>
       new Relay(uri, conn, nextId, commands, events, eoses)
-    ).flatTap(_.start.background)
+    )
   }
 }
 
