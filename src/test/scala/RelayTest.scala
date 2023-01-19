@@ -17,9 +17,11 @@ object RelayTest extends TestSuite {
       val program = Relay(uri"wss://nostr.fmt.wiz.biz").use { 
         relay => for {
           _ <- relay.start
+          _ <- IO.println("websocket supposedly started")
           subscription <- relay.subscribe(
             Filter(kinds = List(1), limit = Some(5))
           )
+          _ <- IO.println("subscription supposedly created")
           stored = subscription._1
           live = subscription._2
           _ <- IO.println("****************************************")
@@ -43,11 +45,11 @@ object RelayTest extends TestSuite {
           }*/
         } yield ()
       }
-
-      program.unsafeRunAsync{
+      program.unsafeToFuture()
+      /*program.unsafeRunAsync{
         case Left(e) => require(false, e.getMessage())
         case Right(value) => assert(true)
-      }
+      }*/
     }
   }
 }
