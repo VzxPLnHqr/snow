@@ -15,22 +15,15 @@ import io.circe.parser.decode
 import io.circe.syntax.*
 
 object Relay {
-  def apply(uri: Uri): Resource[IO, Relay] = {
-    val normalized = uri
-      .withPath(uri.path.dropEndsWithSlash)
-      .withoutFragment
-      .toString()
-
-    (
-      Resource.eval(Ref[IO].of(0)),
-      Resource.eval(Channel.unbounded[IO, Json]),
-      Resource.eval(Topic[IO, (String, Event)]),
-      Resource.eval(Topic[IO, String]),
-      WebSocketClient[IO].connectHighLevel(WSRequest(uri))
-    ).mapN((nextId, commands, events, eoses, conn) =>
-      new Relay(uri, conn, nextId, commands, events, eoses)
-    ).flatTap(_.start.background)
-  }
+  def apply(uri: Uri): Resource[IO, Relay] = for {
+          conn <- WebSocketClient[IO].connectHighLevel(WSRequest(uri))
+          nextId <- Resource.eval(Ref[IO].of(0))
+          commands <- Resource.eval(Channel.unbounded[IO,Json])
+          events <- Resource.eval(Topic[IO, (String, Event)])
+          eoses <- Resource.eval(Topic[IO,String])
+          relay = new Relay(uri,conn,nextId,commands,events,eoses)
+          _ <- relay.start.background
+      } yield relay
 }
 
 class Relay(
@@ -78,6 +71,7 @@ class Relay(
   def start: IO[Unit] = {
     val receive =
       conn.receiveStream
+        .evalTap { frame => IO.println(s"received frame: $frame")}
         .collect { case WSFrame.Text(line, _) => line }
         .map(line => decode[List[Json]](line.toString))
         .collect { case Right(v) => v }
@@ -97,11 +91,13 @@ class Relay(
             case _ => IO.unit
           }
         }
+        .evalTap { msg => IO.println(s"receive: $msg") }
         .compile
         .drain
 
     val send = commands.stream
       .evalTap { msg => conn.sendText(msg.noSpaces) }
+      .evalTap { msg => IO.println(s"conn.sendText(${msg.noSpaces})") }
       .compile
       .drain
 
