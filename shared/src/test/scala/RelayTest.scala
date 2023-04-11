@@ -8,20 +8,20 @@ import cats.effect.*
 import cats.effect.unsafe.implicits.global
 import org.http4s.syntax.literals.uri
 import fs2.concurrent.Channel
+import cats.effect.testing.utest.EffectTestSuite
 
-object RelayTest extends TestSuite {
+object RelayTest extends EffectTestSuite[IO] {
   scalajs.js.Dynamic.global.globalThis.require("websocket-polyfill")
 
   val tests = Tests {
     test("connect to relay and subscribe") {
-      val program = Relay(uri"wss://relay.damus.io/").use { relay =>
+      Relay(uri"wss://relay.damus.io/").use { relay =>
         relay
           .subscribe(
             Filter(kinds = List(1), limit = Some(5))
           )
           .flatMap { (stored, live) =>
             IO.delay {
-              println(stored.size)
               assert(stored.size == 5)
             } *>
               live
@@ -35,8 +35,6 @@ object RelayTest extends TestSuite {
                 .drain
           }
       }
-
-      program.unsafeToFuture()
     }
   }
 }

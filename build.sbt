@@ -22,7 +22,8 @@ lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
       "com.fiatjaf" %%% "scoin" % "0.7.0",
       "org.http4s" %%% "http4s-client" % "1.0.0-M36",
       "org.http4s" %%% "http4s-dom" % "1.0.0-M36",
-      "com.lihaoyi" %%% "utest" % "0.8.0" % Test
+      "com.lihaoyi" %%% "utest" % "0.8.0" % Test,
+      "org.typelevel" %%% "cats-effect-testing-utest" % "1.5.0" % Test
     ),
     testFrameworks += new TestFramework("utest.runner.Framework"),
   )
