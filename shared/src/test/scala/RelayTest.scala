@@ -14,7 +14,7 @@ object RelayTest extends TestSuite {
 
   val tests = Tests {
     test("connect to relay and subscribe") {
-      val program = Relay(uri"wss://nostr.fmt.wiz.biz").use { relay =>
+      val program = Relay(uri"wss://relay.damus.io/").use { relay =>
         relay
           .subscribe(
             Filter(kinds = List(1), limit = Some(5))

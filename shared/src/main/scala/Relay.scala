@@ -71,7 +71,6 @@ class Relay(
   def start: IO[Unit] = {
     val receive =
       conn.receiveStream
-        .evalTap { frame => IO.println(s"received frame: $frame")}
         .collect { case WSFrame.Text(line, _) => line }
         .map(line => decode[List[Json]](line.toString))
         .collect { case Right(v) => v }
