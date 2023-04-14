@@ -59,10 +59,14 @@ class Relay(
             case (subid, event) if subid == currId => event
           }
           .merge(eose)
+          .evalTap(evt => IO.println(s"evt = $evt"))
 
       for {
+        _ <- IO.println("seeennndding........................................................................................................................")
         _ <- send
         stored <- receive.takeWhile(_.kind != -1).compile.toList
+        _ <- IO.println(stored.size)
+        _ <- IO.println("---------------------------------------------------------------------------------------------------------------------------------------")
         live = receive.dropWhile(_.kind != -1).drop(1)
       } yield (stored, live)
     }
