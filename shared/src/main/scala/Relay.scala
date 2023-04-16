@@ -36,8 +36,8 @@ class Relay(
 ) {
   def subscribe(
       filter: Filter*
-  ): IO[(List[Event], fs2.Stream[IO, Event])] = {
-    nextId.modify(x => (x + 1, x)).map(_.toString).flatMap { currId =>
+  ): Resource[IO,(List[Event], fs2.Stream[IO, Event])] = {
+    Resource.eval(nextId.modify(x => (x + 1, x)).map(_.toString).flatMap { currId =>
       val send = commands.send(
         Seq("REQ".asJson, currId.asJson)
           .concat(filter.map(_.asJson))
@@ -69,7 +69,7 @@ class Relay(
         _ <- IO.println("---------------------------------------------------------------------------------------------------------------------------------------")
         live = receive.dropWhile(_.kind != -1).drop(1)
       } yield (stored, live)
-    }
+    })
   }
 
   def start: IO[Unit] = {
