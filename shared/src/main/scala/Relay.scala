@@ -22,7 +22,7 @@ object Relay {
           events <- Resource.eval(Topic[IO, (String, Event)])
           eoses <- Resource.eval(Topic[IO,String])
           relay = new Relay(uri,conn,nextId,commands,events,eoses)
-          _ <- relay.start.background
+          //_ <- relay.start.background
       } yield relay
 }
 
@@ -62,18 +62,19 @@ class Relay(
           .evalTap(evt => IO.println(s"evt = $evt"))
 
       for {
-        _ <- IO.println("seeennndding........................................................................................................................")
         _ <- send
-        stored <- receive.takeWhile(_.kind != -1).compile.toList
+        compiled = receive.takeWhile(_.kind != -1).compile
+        _ <- compiled.count.flatMap(i => IO.println(s"ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccount is $i"))
+        stored <- compiled.toList
         _ <- IO.println(stored.size)
-        _ <- IO.println("---------------------------------------------------------------------------------------------------------------------------------------")
+        _ <- IO.println("***************************************************************************************************************************")
         live = receive.dropWhile(_.kind != -1).drop(1)
       } yield (stored, live)
     })
   }
 
   def start: IO[Unit] = {
-    val receive =
+    def receive =
       conn.receiveStream
         .collect { case WSFrame.Text(line, _) => line }
         .map(line => decode[List[Json]](line.toString))
@@ -98,12 +99,13 @@ class Relay(
         .compile
         .drain
 
-    val send = commands.stream
+    def send = commands.stream
       .evalTap { msg => conn.sendText(msg.noSpaces) }
       .evalTap { msg => IO.println(s"conn.sendText(${msg.noSpaces})") }
       .compile
       .drain
 
     (send, receive).parTupled.void
+    IO.unit
   }
 }
