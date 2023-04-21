@@ -88,12 +88,25 @@ lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
     ),
     testFrameworks += new TestFramework("utest.runner.Framework"),
   )
+  .enablePlugins(ScalaJSImportMapPlugin)
   .jsSettings(
-    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) },
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
     jsEnv := {
       val options = new FirefoxOptions()
       options.setHeadless(true)
       new SeleniumJSEnv(options, seleniumConfig.value)
+    },
+    scalaJSImportMap := { (rawImport: String) =>
+      if (
+        rawImport.startsWith("@noble/hashes") ||
+        rawImport.startsWith("@noble/secp256k1") ||
+        rawImport.startsWith("@noble/secp256k1") ||
+        rawImport.startsWith("@stablelib/chacha") ||
+        rawImport.startsWith("@stablelib/chacha20poly1305")
+      )
+        "https://cdn.jsdelivr.net/npm/" + rawImport
+      else
+        rawImport
     }
   )
 

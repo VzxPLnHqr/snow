@@ -16,6 +16,7 @@ libraryDependencies += "org.http4s" %% "http4s-ember-server" % http4sVersion
 
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.12.0")
 addSbtPlugin("io.chrisdavenport" % "sbt-npm-dependencies" % "0.0.1")
+addSbtPlugin("com.armanbilge" % "sbt-scalajs-importmap" % "0.1.0")
 
 addSbtPlugin("org.portable-scala" % "sbt-scala-native-crossproject" % "1.2.0")
 addSbtPlugin("org.scala-native" % "sbt-scala-native" % "0.4.10")
