@@ -89,7 +89,12 @@ lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
     testFrameworks += new TestFramework("utest.runner.Framework"),
   )
   .jsSettings(
-    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }
+    scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) },
+    jsEnv := {
+      val options = new FirefoxOptions()
+      options.setHeadless(true)
+      new SeleniumJSEnv(options, seleniumConfig.value)
+    }
   )
 
 lazy val testsFirefox = project
