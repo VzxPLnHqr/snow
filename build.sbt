@@ -9,50 +9,6 @@ ThisBuild / tlSonatypeUseLegacyHost := false
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-lazy val fileServicePort = settingKey[Int]("Port for static file server")
-Global / fileServicePort := {
-  import cats.data.Kleisli
-  import cats.effect.IO
-  import cats.effect.unsafe.implicits.global
-  import com.comcast.ip4s._
-  import org.http4s._
-  import org.http4s.dsl.io._
-  import org.http4s.ember.server.EmberServerBuilder
-  import org.http4s.server.staticcontent._
-  import java.net.InetSocketAddress
-
-  (for {
-    deferredPort <- IO.deferred[Int]
-    _ <- EmberServerBuilder
-      .default[IO]
-      .withPort(port"0")
-      .withHttpWebSocketApp { wsb =>
-        HttpRoutes
-          .of[IO] {
-            case Method.GET -> Root / "ws" =>
-              wsb.build(identity)
-            case req =>
-              fileService[IO](FileService.Config(".")).orNotFound.run(req).map { res =>
-                // TODO find out why mime type is not auto-inferred
-                if (req.uri.renderString.endsWith(".js"))
-                  res.withHeaders(
-                    "Service-Worker-Allowed" -> "/",
-                    "Content-Type" -> "text/javascript"
-                  )
-                else res
-              }
-          }
-          .orNotFound
-      }
-      .build
-      .map(_.address.getPort)
-      .evalTap(deferredPort.complete(_))
-      .useForever
-      .start
-    port <- deferredPort.get
-  } yield port).unsafeRunSync()
-}
-
 val http4sVersion = "1.0.0-M36"
 
 import org.openqa.selenium.WebDriver
@@ -60,14 +16,6 @@ import org.openqa.selenium.WebDriver
 import org.openqa.selenium.firefox.FirefoxOptions
 // import org.scalajs.jsenv.nodejs.NodeJSEnv
 import org.scalajs.jsenv.selenium.SeleniumJSEnv
-
-lazy val seleniumConfig = Def.setting {
-  SeleniumJSEnv
-    .Config()
-    .withMaterializeInServer(
-      "target/selenium",
-      s"http://localhost:${fileServicePort.value}/target/selenium/")
-}
 
 lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
   .crossType(CrossType.Full)
@@ -88,17 +36,18 @@ lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
     ),
     testFrameworks += new TestFramework("utest.runner.Framework"),
   )
-  .enablePlugins(ScalaJSImportMapPlugin)
+  .jsEnablePlugins(ScalaJSImportMapPlugin)
   .jsSettings(
     scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.ESModule) },
     jsEnv := {
       val options = new FirefoxOptions()
       options.setHeadless(true)
-      new SeleniumJSEnv(options, seleniumConfig.value)
+      new SeleniumJSEnv(options, SeleniumJSEnv.Config())
     },
     scalaJSImportMap := { (rawImport: String) =>
       if (
         rawImport.startsWith("@noble/hashes") ||
+        rawImport.startsWith("@noble/hashes/hmac") ||
         rawImport.startsWith("@noble/secp256k1") ||
         rawImport.startsWith("@noble/secp256k1") ||
         rawImport.startsWith("@stablelib/chacha") ||
@@ -107,18 +56,6 @@ lazy val snow = crossProject(/*JVMPlatform,*/ JSPlatform /*, NativePlatform*/)
         "https://cdn.jsdelivr.net/npm/" + rawImport
       else
         rawImport
-    }
-  )
-
-lazy val testsFirefox = project
-  .in(file(".testsFirefox"))
-  .dependsOn(snow.js)
-  .aggregate(snow.js)
-  .settings(
-    jsEnv := {
-      val options = new FirefoxOptions()
-      options.setHeadless(true)
-      new SeleniumJSEnv(options, seleniumConfig.value)
     }
   )
 
