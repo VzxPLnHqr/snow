@@ -1,4 +1,4 @@
-ThisBuild / scalaVersion        := "3.2.1"
+ThisBuild / scalaVersion        := "3.3.4"
 ThisBuild / organization        := "com.fiatjaf"
 ThisBuild / homepage            := Some(url("https://github.com/fiatjaf/snow"))
 ThisBuild / licenses            += License.Apache2
@@ -15,10 +15,10 @@ lazy val root = project
     name := "snow",
     description := "Scala Nostr W̶a̶r̶s̶h̶i̶p̶s̶ Utilities",
     libraryDependencies ++= Seq(
-      "io.circe" %%% "circe-core" % "0.14.3",
-      "io.circe" %%% "circe-generic" % "0.14.3",
-      "io.circe" %%% "circe-parser" % "0.14.3",
-      "com.fiatjaf" %%% "scoin" % "0.5.0",
+      "io.circe" %%% "circe-core" % "0.14.5",
+      "io.circe" %%% "circe-generic" % "0.14.5",
+      "io.circe" %%% "circe-parser" % "0.14.5",
+      "com.fiatjaf" %%% "scoin" % "0.7.0",
       "org.http4s" %%% "http4s-client" % "1.0.0-M36",
       "org.http4s" %%% "http4s-dom" % "1.0.0-M36",
 
