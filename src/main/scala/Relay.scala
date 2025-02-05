@@ -123,16 +123,12 @@ class RelayImplForIO(
             .collect {
               case (subid, event) if subid == currId => event
             }
-            .merge(eose)
 
         // get the stored events. If we wanted to also keep the EOSE event
         // we would use `takeThrough` here.
-        val stored = receive.takeWhile(_.kind != -1)
+        val stored = receive.merge(eose).takeWhile(_.kind != -1)
             .compile.toList
         
-        // note: it may seem like the live events should be something like
-        // `receive.drop(stored.size)`, but that would cause us to miss events.
-        // This is due to how receive is actually a subscription to the events Topic.
         val live = receive
         
         // we make sure to trigger `send` first
