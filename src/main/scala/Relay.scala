@@ -25,7 +25,6 @@ trait Relay[F[_]]:
   def nextId: Ref[F, Int]
   def commands: Channel[F, Json]
   def events: Topic[F, (String, Event)]
-  def eoses: Topic[F, String]
   /**
    * subscribing with a `Filter` will give us a list of stored events
    * and a stream of future events */
@@ -45,7 +44,6 @@ object Relay {
       nextId <- Ref[IO].of(0).toResource
       commands <- Channel.unbounded[IO, Json].toResource
       events <- Topic[IO, (String, Event)].toResource
-      eoses <- Topic[IO,String].toResource
       conn <- WebSocketClient[IO].connectHighLevel(WSRequest(uri))
 
       // here we weave together the websocket streams and start the background
@@ -59,7 +57,7 @@ object Relay {
             msg match {
               case msg if msg.size == 2 && msg(0).as[String] == Right("EOSE") =>
                 msg(1).as[String] match {
-                  case Right(subid) => eoses.publish1(subid).void 
+                  case Right(subid) => events.publish1((subid, Event(kind = -1, content = ""))).void 
                                           *> debug(s"$subid: eose")
                   case _            => IO.unit
                 }
@@ -84,7 +82,7 @@ object Relay {
         (send, receive).parTupled.void.background
       }
       // only thing left to do now is return our Relay
-    yield new RelayImplForIO(uri, nextId, commands, events, eoses, debugOn)
+    yield new RelayImplForIO(uri, nextId, commands, events, debugOn)
 }
 
 class RelayImplForIO(
@@ -92,7 +90,6 @@ class RelayImplForIO(
     val nextId: Ref[IO, Int],
     val commands: Channel[IO, Json],
     val events: Topic[IO, (String, Event)],
-    val eoses: Topic[IO, String],
     debugOn: Boolean
 ) extends Relay[IO]{
 
@@ -109,19 +106,12 @@ class RelayImplForIO(
             .asJson
         )
 
-        val eose =
-          eoses
-            .subscribe(1)
-            .collect {
-              case subid if subid == currId => Event(kind = -1, content = "")
-            } //.evalTap(e => debug(s"eose received: $e"))
-
         val receive =
           events
             .subscribe(1)
             .collect {
               case (subid, event) if subid == currId => event
-            }.merge(eose)
+            }
 
         // we make sure to trigger `send` first
         send.background *> splitHistorical(receive)
