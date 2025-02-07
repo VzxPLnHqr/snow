@@ -29,7 +29,7 @@ trait Relay[F[_]]:
   /**
    * subscribing with a `Filter` will give us a list of stored events
    * and a stream of future events */
-  def subscribe( filter: Filter*): F[(List[Event], Stream[F,Event])]
+  def subscribe( filter: Filter*): Resource[F, (List[Event], Stream[F,Event])]
 
 object Relay {
 
@@ -59,15 +59,15 @@ object Relay {
             msg match {
               case msg if msg.size == 2 && msg(0).as[String] == Right("EOSE") =>
                 msg(1).as[String] match {
-                  case Right(subid) => debug(s"received eose for subid:$subid") 
-                                        *> eoses.publish1(subid).void 
-                                          *> debug(s"published eose for subid:$subid")
+                  case Right(subid) => eoses.publish1(subid).void 
+                                          *> debug(s"$subid: eose")
                   case _            => IO.unit
                 }
               case msg if msg.size == 3 && msg(0).as[String] == Right("EVENT") =>
                 (msg(1).as[String], msg(2).as[Event]) match {
                   case (Right(subid), Right(event)) if event.isValid =>
-                    events.publish1((subid, event)).void
+                    debug(s"$subid: ${event.hash}")
+                     *> events.publish1((subid, event)).void
                   case _ => IO.unit
                 }
               case _ => IO.unit
@@ -100,9 +100,8 @@ class RelayImplForIO(
 
   def subscribe(
       filter: Filter*
-  ): IO[(List[Event], fs2.Stream[IO, Event])] = {
-    debug(s"subscribing to filter $filter") *> 
-    nextId.getAndUpdate(_ + 1).map(_.toString).flatMap { 
+  ): Resource[IO, (List[Event], fs2.Stream[IO, Event])] = {
+    nextId.getAndUpdate(_ + 1).map(_.toString).toResource.flatMap { 
       currId =>
         val send = commands.send(
           Seq("REQ".asJson, currId.asJson)
@@ -115,24 +114,47 @@ class RelayImplForIO(
             .subscribe(1)
             .collect {
               case subid if subid == currId => Event(kind = -1, content = "")
-            }.evalTap(e => debug(s"eose received: $e"))
+            } //.evalTap(e => debug(s"eose received: $e"))
 
         val receive =
           events
             .subscribe(1)
             .collect {
               case (subid, event) if subid == currId => event
-            }
+            }.merge(eose)
 
-        // get the stored events. If we wanted to also keep the EOSE event
-        // we would use `takeThrough` here.
-        val stored = receive.merge(eose).takeWhile(_.kind != -1)
-            .compile.toList
-        
-        val live = receive
-        
         // we make sure to trigger `send` first
-        send *> stored.map((_,live))
+        send.background *> splitHistorical(receive)
     }
   }
+
+  /** split into historical versus live events, where an event of kind -1 designates
+   *  the marker between past and present
+    from SystemFw's help here: https://discord.com/channels/632277896739946517/632310980449402880/1337198474252255264
+    */
+  def splitHistorical(in: Stream[IO, Event]): Resource[IO, (List[Event], Stream[IO, Event])] =
+    (Deferred[IO, List[Event]].toResource, Channel.unbounded[IO, Event].toResource)
+      .flatMapN { (historical, live) =>
+        def split(in: Stream[IO, Event], acc: Chunk[Event] = Chunk.empty): Pull[IO, Event, Unit] =
+          in
+            .pull
+            .uncons1 // ideally done with uncons + chunk split, left for the reader
+            .flatMap {
+              case None => Pull.done
+              case Some((n, rest)) =>
+                if n.kind == - 1 
+                then Pull.eval(historical.complete(acc.toList)) >> rest.pull.echo
+                else split(rest, acc ++ Chunk(n))
+            }
+
+        split(in)
+          .stream
+          .through(live.sendAll)
+          .compile
+          .drain
+          .background
+          .evalMap{ _ =>
+            historical.get.tupleRight(live.stream)
+          }
+      }
 }
