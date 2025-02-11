@@ -54,6 +54,16 @@ jobs:
         if: matrix.java == 'temurin@8' && steps.setup-java-temurin-8.outputs.cache-hit == 'false'
         run: sbt +update
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Node Modules
+        run: |
+          sbt esInstall
+          cp -a target/esbuild/. ./
+
       - name: Check that workflows are up to date
         run: sbt githubWorkflowCheck
 

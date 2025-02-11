@@ -1,3 +1,5 @@
+import com.google.common.escape.CharEscaperBuilder
+
 ThisBuild / scalaVersion        := "3.3.4"
 ThisBuild / organization        := "com.fiatjaf"
 ThisBuild / homepage            := Some(url("https://github.com/fiatjaf/snow"))
@@ -27,3 +29,20 @@ lazy val snow = project
     testFrameworks += new TestFramework("utest.runner.Framework"),
     scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.CommonJSModule) }
   ).enablePlugins(ScalaJSPlugin, EsbuildPlugin)
+
+// we need these things only to run tests on nodejs in github actions
+ThisBuild / githubWorkflowBuildPreamble +=
+  WorkflowStep.Use(
+    UseRef.Public("actions", "setup-node", "v4"),
+    name = Some("Setup Node.js"),
+    params = Map("node-version" -> "22"),
+  )
+ThisBuild / githubWorkflowBuildPreamble ++= Seq(
+    WorkflowStep.Run(
+    name = Some("Install Node Modules"),
+    commands = List(
+      "sbt esInstall",
+      "cp -a target/esbuild/. ./"
+    ),
+  )
+)
