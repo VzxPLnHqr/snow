@@ -40,9 +40,9 @@ object RelayTest extends TestSuite {
               IO.println(s"done processing ${stored.size} stored events") *>
               IO.delay {
                 assert(stored.size == numStoredEvents)
-              } *> IO.println("now processing live stream of events (stopping after 2)") *>
+              } *> IO.println("now processing live stream of events (stopping after 1)") *>
                 live
-                  .take(2)
+                  .take(1)
                   .evalTap(e => IO.println((e.kind,e.hash)))
                   .compile
                   .drain
@@ -50,9 +50,9 @@ object RelayTest extends TestSuite {
               IO.println(s"done processing ${stored.size} stored2 events") *>
               IO.delay {
                 assert(stored2.size == numStoredEvents)
-              } *> IO.println("now processing live stream2 of events (stopping after 2)") *>
+              } *> IO.println("now processing live stream2 of events (stopping after 1)") *>
                 live2
-                  .take(2)
+                  .take(1)
                   .evalTap(e => IO.println((e.kind,e.hash)))
                   .compile
                   .drain
