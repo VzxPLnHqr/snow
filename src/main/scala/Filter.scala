@@ -22,18 +22,39 @@ object Filter {
           )
           .getOrElse(Map.empty)
 
-      Right(
-        Filter(
-          authors =
-            c.downField("authors").as[List[String]].getOrElse(List.empty),
-          kinds = c.downField("kinds").as[List[Int]].getOrElse(List.empty),
-          ids = c.downField("ids").as[List[String]].getOrElse(List.empty),
-          tags = tags,
-          since = c.downField("since").as[Long].toOption,
-          until = c.downField("until").as[Long].toOption,
-          limit = c.downField("limit").as[Int].toOption
-        )
-      )
+      // json for filters should not have extra fields
+      c.keys.map(_.filterNot{
+        case "authors" => true
+        case "kinds"  => true
+        case "ids" => true
+        case "since" => true
+        case "until" => true
+        case "limit" => true
+        case p if p.startsWith("#") => true
+        case _ => false
+      }.size) match {
+        case Some(n) if n > 0 => 
+          Left(
+            DecodingFailure(
+              DecodingFailure.Reason.CustomReason("json has too many extraneous fields to be a filter"),
+              c.downField("content")
+            )
+          )
+        case _ => 
+          Right(
+            Filter(
+              authors =
+                c.downField("authors").as[List[String]].getOrElse(List.empty),
+              kinds = c.downField("kinds").as[List[Int]].getOrElse(List.empty),
+              ids = c.downField("ids").as[List[String]].getOrElse(List.empty),
+              tags = tags,
+              since = c.downField("since").as[Long].toOption,
+              until = c.downField("until").as[Long].toOption,
+              limit = c.downField("limit").as[Int].toOption
+            )
+          )
+      }
+
     }
   }
   given Encoder[Filter] = new Encoder[Filter] {
