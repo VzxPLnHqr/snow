@@ -12,6 +12,7 @@ import io.circe.syntax.*
 import org.http4s.Uri
 import org.http4s.client.websocket.*
 import org.http4s.dom.*
+import snow.Messages.FromRelay.OK
 
 /** An implementation of Relay[F] provides methods like `subscribe` and access
   * to the underlying streams of things while hiding the details about how it
@@ -27,6 +28,14 @@ trait Relay[F[_]]:
     * stream of future events
     */
   def subscribe(filter: Filter*): Resource[F, (List[Event], Stream[F, Event])]
+
+  /**
+    * Send `event` to the relay and wait for an "OK" from the relay. It is
+    * up to the caller to process the OK and determine if the event was
+    * accepted or not and to take any corrective action and resubmit if necessary.
+    * See [nip01](https://github.com/nostr-protocol/nips/blob/master/01.md)
+    */
+  def submitEvent(event: Event, assumeValid: Boolean = false): F[Messages.FromRelay.OK]
 
 object Relay {
 
@@ -46,6 +55,7 @@ object Relay {
       nextId <- Ref[IO].of(0).toResource
       commands <- Channel.unbounded[IO, Json].toResource
       events <- Topic[IO, (String, Event)].toResource
+      oks <- Topic[IO, Messages.FromRelay.OK].toResource
       conn <- WebSocketClient[IO].connectHighLevel(WSRequest(uri))
 
       // here we weave together the websocket streams and start the background
@@ -67,14 +77,19 @@ object Relay {
                   case _ => IO.unit
                 }
               case msg
-                  if msg.size == 3 && msg(0).as[String] == Right("EVENT") =>
-                (msg(1).as[String], msg(2).as[Event]) match {
-                  case (Right(subid), Right(event)) if event.isValid =>
-                    debug(s"$subid: ${event.hash}")
-                      *> events.publish1((subid, event)).void
-                  case _ => IO.unit
-                }
-              case _ => IO.unit
+                if msg.size == 3 && msg(0).as[String] == Right("EVENT") =>
+                  (msg(1).as[String], msg(2).as[Event]) match {
+                    case (Right(subid), Right(event)) if event.isValid =>
+                      debug(s"$subid: ${event.hash}")
+                        *> events.publish1((subid, event)).void
+                    case _ => IO.unit
+                  }
+              case msg if msg.asJson.as[Messages.FromRelay.OK].isRight =>
+                msg.asJson.as[Messages.FromRelay.OK] match
+                  case Left(_) => IO.raiseError(new RuntimeException("impossible!"))
+                  case Right(ok) => oks.publish1(ok).void
+
+              case msg => debug(s"unable to decode: ${msg}") *> IO.unit
             }
           }
           .compile
@@ -90,7 +105,7 @@ object Relay {
         (send, receive).parTupled.void.background
       }
     // only thing left to do now is return our Relay
-    yield new RelayImplForIO(uri, nextId, commands, events, debugOn)
+    yield new RelayImplForIO(uri, nextId, commands, events, oks, debugOn)
 }
 
 class RelayImplForIO(
@@ -98,11 +113,40 @@ class RelayImplForIO(
     val nextId: Ref[IO, Int],
     val commands: Channel[IO, Json],
     val events: Topic[IO, (String, Event)],
+    val oks: Topic[IO, Messages.FromRelay.OK],
     debugOn: Boolean
 ) extends Relay[IO] {
 
   def debug[A](x: A)(using Show[A]) =
     if (debugOn) then IO.println(x.show) else IO.unit
+
+  def submitEvent(event: Event, assumeValid: Boolean = false): IO[Messages.FromRelay.OK] =
+    val checkValid = 
+      if !assumeValid then
+        IO.raiseUnless(event.isValid)(RuntimeException("invalid: did you forget to sign?"))
+      else 
+        IO.unit
+      
+    val send = commands.send(
+      Seq("EVENT".asJson, event.asJson).asJson
+    )
+
+    val listen = oks.subscribe(1).collect {
+        case ok @ Messages.FromRelay.OK(eventId, accepted, message)
+          // if an event is submitted such that the id cannot be correctly
+          // calculated (maybe it is missing pubkey), then relays 
+          // may return a "" for the eventId so here we go ahead and pass that 
+          // through to the caller. The risk is that in a highly concurrent 
+          // environment, this particular OK message might pertain to a different 
+          // event all together. Regardless, the caller has not yet confirmed
+          // that the event has been accepted, so it should take efforts to remedy.
+          if(eventId == event.hash.toHex || eventId.isEmpty) => ok
+      }
+      .head
+      .compile
+      .onlyOrError
+
+    listen <& (checkValid *> send)
 
   def subscribe(
       filter: Filter*
@@ -130,7 +174,7 @@ class RelayImplForIO(
     * designates the marker between past and present from SystemFw's help here:
     * https://discord.com/channels/632277896739946517/632310980449402880/1337198474252255264
     */
-  def splitHistorical(
+  private def splitHistorical(
       in: Stream[IO, Event]
   ): Resource[IO, (List[Event], Stream[IO, Event])] =
     (
