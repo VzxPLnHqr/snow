@@ -13,6 +13,7 @@ import org.http4s.Uri
 import org.http4s.client.websocket.*
 import org.http4s.dom.*
 import snow.Messages.FromRelay.OK
+import scala.concurrent.duration.*
 
 /** An implementation of Relay[F] provides methods like `subscribe` and access
   * to the underlying streams of things while hiding the details about how it
@@ -36,6 +37,12 @@ trait Relay[F[_]]:
     * See [nip01](https://github.com/nostr-protocol/nips/blob/master/01.md)
     */
   def submitEvent(event: Event, assumeValid: Boolean = false): F[Messages.FromRelay.OK]
+
+  /**
+   * Given an `eventId` ask the relay for the corresponding `Event` or timeout
+   * and return `None`
+   */
+  def lookupEventById(eventId: String, timeout: FiniteDuration = 5.seconds): F[Option[Event]]
 
 object Relay {
 
@@ -147,6 +154,13 @@ class RelayImplForIO(
       .onlyOrError
 
     listen <& (checkValid *> send)
+
+  def lookupEventById(eventId: String, timeout: FiniteDuration): IO[Option[Event]] =
+    subscribe(Filter(ids = List(eventId), limit = Some(1))).use {
+      case (storedEvents, liveEvents) => 
+        val allEvents = Stream(storedEvents*).covary[IO] ++ liveEvents
+        allEvents.head.compile.onlyOrError.timeout(timeout).option
+    }
 
   def subscribe(
       filter: Filter*
