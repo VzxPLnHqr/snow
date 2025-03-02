@@ -179,8 +179,14 @@ class RelayImplForIO(
             case (subid, event) if subid == currId => event
           }
 
+      val close = commands.send(
+        Seq("CLOSE".asJson, currId.asJson).asJson
+      )
+
       // we make sure to trigger `send` first
-      send.background *> splitHistorical(receive)
+      send.background *> splitHistorical(receive).flatMap {
+        subscription => Resource.make(IO(subscription))(_ => close.void)
+      }
     }
   }
 
